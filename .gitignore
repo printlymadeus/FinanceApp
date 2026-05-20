@@ -1,0 +1,16 @@
+# Database files
+*.db
+data_*.db
+print_business.db
+
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS files
+.DS_Store
+Thumbs.db
