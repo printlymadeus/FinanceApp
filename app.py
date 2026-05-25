@@ -9,19 +9,15 @@ import plotly.express as px
 
 st.set_page_config(page_title="3D Print Tracker", layout="wide")
 
-# ====================== SESSION & AUTH ======================
-if "current_user" not in st.session_state:
-    st.session_state.current_user = None
+# ====================== DATABASE FOLDER ======================
+DB_FOLDER = r"C:\Users\aaarr\OneDrive\Desktop\web app\databases"
+os.makedirs(DB_FOLDER, exist_ok=True)
 
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-# ====================== PER-USER DATABASE ======================
 def get_db_path(username):
-    return f"data_{username.lower()}.db"
+    return os.path.join(DB_FOLDER, f"data_{username.lower()}.db")
 
 def init_user_db(username):
-    conn = get_connection()
+    conn = sqlite3.connect(get_db_path(username))
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS transactions (
                  id INTEGER PRIMARY KEY,
@@ -35,19 +31,24 @@ def init_user_db(username):
                  customer TEXT,
                  details TEXT,
                  notes TEXT)''')
-    try: c.execute("ALTER TABLE transactions ADD COLUMN cost REAL")
-    except: pass
-    try: c.execute("ALTER TABLE transactions ADD COLUMN shipping REAL")
-    except: pass
     conn.commit()
     conn.close()
 
 def get_connection():
     return sqlite3.connect(get_db_path(st.session_state.current_user))
 
-# ====================== LOGIN PAGE ======================
+# ====================== SESSION ======================
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+if "form_key" not in st.session_state:
+    st.session_state.form_key = 0
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# ====================== LOGIN ======================
 def login_page():
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.title("🖨️ Printly Made")
         st.subheader("3D Printing Business Tracker")
@@ -55,13 +56,13 @@ def login_page():
         tab1, tab2 = st.tabs(["🔑 Login", "📝 Sign Up"])
 
         with tab1:
-            username = st.text_input("Username", key="login_user")
-            password = st.text_input("Password", type="password", key="login_pass")
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
             if st.button("Login", type="primary", use_container_width=True):
                 if username and password:
                     if username.lower() == "adrian" and hash_password(password) == hash_password("adrian123"):
                         st.session_state.current_user = username
-                        init_user_db(username)          # ← Important
+                        init_user_db(username)
                         st.success("✅ Login Successful!")
                         st.rerun()
                     else:
@@ -70,15 +71,15 @@ def login_page():
                             with open(pass_file, "r") as f:
                                 if f.read().strip() == hash_password(password):
                                     st.session_state.current_user = username
-                                    init_user_db(username)   # ← Important
+                                    init_user_db(username)
                                     st.success("✅ Login Successful!")
                                     st.rerun()
                 st.error("❌ Invalid username or password")
 
         with tab2:
-            new_user = st.text_input("Choose Username", key="new_user")
-            new_pass = st.text_input("Choose Password", type="password", key="new_pass")
-            new_pass2 = st.text_input("Confirm Password", type="password", key="new_pass2")
+            new_user = st.text_input("Choose Username")
+            new_pass = st.text_input("Choose Password", type="password")
+            new_pass2 = st.text_input("Confirm Password", type="password")
             if st.button("Create Account", type="primary", use_container_width=True):
                 if new_pass != new_pass2:
                     st.error("Passwords do not match")
@@ -91,7 +92,6 @@ def login_page():
                     st.success(f"✅ Account created for **{new_user}**!")
                     st.rerun()
 
-# ====================== MAIN APP ======================
 if st.session_state.current_user is None:
     login_page()
 else:
@@ -101,8 +101,7 @@ else:
     if st.sidebar.button("🚪 Logout"):
         st.session_state.current_user = None
         st.rerun()
-
-    # ====================== NAVIGATION ======================
+# ====================== NAVIGATION ======================
     st.sidebar.markdown("## Navigation")
     page = st.sidebar.radio(
         label="",
@@ -114,14 +113,15 @@ else:
             "Analysis": "📈 Analysis"
         }[x]
     )
-# ====================== PRODUCTS LIST ======================
+
     products = [
         "Garage", "Dog Bust", "Bowl", "Dog Statue", "Animal Bust", "Animal Statue",
         "Coffee Spoon Holder", "Memory Box", "Dog Holder", "Ring Holder", "Soap Holder",
         "Team Design", "Multi-purpose Pot", "Treat Container", "Knitted Figurine",
         "Fidget Spinner", "Dog Brush", "Dragon", "Magnet", "Waste Bag Holder"
     ]
-   # ====================== ADD TRANSACTION ======================
+
+    # ====================== ADD TRANSACTION ======================
     if page == "Add Transaction":
         st.header("Add New Transaction")
         if "form_key" not in st.session_state:
@@ -131,7 +131,6 @@ else:
         with col1:
             trans_date = st.date_input("Date", date.today(), key=f"date_{st.session_state.form_key}")
             trans_type = st.selectbox("Type", ["Income", "Expense"], key=f"type_{st.session_state.form_key}")
-       
         with col2:
             if trans_type == "Income":
                 category = st.selectbox("Product", products, key=f"product_{st.session_state.form_key}")
@@ -140,7 +139,6 @@ else:
                 category = st.selectbox("Expense Category", exp_categories, key=f"exp_{st.session_state.form_key}")
 
         amount = st.number_input("Selling Price ($)", min_value=0.01, step=0.01, key=f"amt_{st.session_state.form_key}")
-       
         cost = shipping = 0.0
         if trans_type == "Income":
             cost = st.number_input("Cost to Make ($)", min_value=0.0, step=0.01, value=0.0, key=f"cost_{st.session_state.form_key}")
@@ -204,13 +202,16 @@ else:
             elif category == "Waste Bag Holder":
                 details["color"] = st.text_input("Color", key=f"waste_color_{st.session_state.form_key}")
                 details["name"] = st.text_input("Name", key=f"waste_name_{st.session_state.form_key}")
+            elif category == "Dragon":
+                details["color"] = st.text_input("Color", key=f"dragon_color_{st.session_state.form_key}")
+                details["type"] = st.text_input("Type of Dragon", key=f"dragon_type_{st.session_state.form_key}")
 
         description = st.text_input("General Description (optional)", key=f"desc_{st.session_state.form_key}")
         notes = st.text_area("Additional Notes", key=f"notes_{st.session_state.form_key}")
-      
+
         if st.button("💾 Save New Transaction", type="primary"):
             details_json = json.dumps(details)
-            conn = get_connection()   # ← Changed to per-user
+            conn = get_connection()
             conn.execute("""INSERT INTO transactions
                          (date, type, category, description, amount, cost, shipping, customer, details, notes)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -218,27 +219,29 @@ else:
                           amount, cost, shipping, customer, details_json, notes))
             conn.commit()
             conn.close()
-          
             st.success("✅ Transaction Saved Successfully!")
             st.session_state.form_key += 1
             st.rerun()
 
-    # ====================== DASHBOARD ======================
+        # ====================== DASHBOARD ======================
     elif page == "Dashboard":
         st.header("Business Overview")
         conn = get_connection()
         df = pd.read_sql_query("SELECT * FROM transactions", conn)
         conn.close()
-        
+
         if df.empty:
             st.info("No transactions yet.")
         else:
+            for col in ['amount', 'cost', 'shipping']:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
             income = df[df['type'] == 'Income']
             expenses = df[df['type'] == 'Expense']
             
             total_revenue = income['amount'].sum()
-            total_cogs = income['cost'].fillna(0).sum()
-            total_shipping = income['shipping'].fillna(0).sum()
+            total_cogs = income['cost'].sum()
+            total_shipping = income['shipping'].sum()
             total_other_operating = expenses['amount'].sum()
             
             gross_profit = total_revenue - total_cogs
@@ -255,140 +258,106 @@ else:
             col4.metric("Net Profit", f"${net_profit:,.2f}", f"{net_margin:.1f}%")
 
             col5, col6, col7 = st.columns(3)
-            with col5: st.metric("Shipping Cost", f"${total_shipping:,.2f}")
-            with col6: st.metric("Other Operating Expenses", f"${total_other_operating:,.2f}")
-            with col7: st.metric("Total Transactions", len(df))
+            with col5:
+                st.metric("Shipping Cost", f"${total_shipping:,.2f}")
+            with col6:
+                st.metric("Other Operating Expenses", f"${total_other_operating:,.2f}")
+            with col7:
+                st.metric("Total Transactions", len(df))
 
             st.subheader("Recent Transactions")
-            recent = df.sort_values(['date', 'id'], ascending=[False, False]).copy()
-            recent = recent.drop(columns=['id', 'details'], errors='ignore')
-            recent['profit'] = recent.apply(
-                lambda x: x['amount'] - (x.get('cost') or 0) - (x.get('shipping') or 0) if x['type'] == 'Income' else -x['amount'], axis=1)
-            st.dataframe(recent, use_container_width=True, hide_index=True)
+            recent = df.sort_values(['date', 'id'], ascending=[False, False]).head(20).copy()
+            
+            # Format the table to show $ amounts
+            display_df = recent.copy()
+            for col in ['amount', 'cost', 'shipping']:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].apply(lambda x: f"${float(x):.2f}" if pd.notna(x) else "$0.00")
+            
+            # Drop technical columns
+            display_df = display_df.drop(columns=['id', 'details'], errors='ignore')
+            
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-    # ====================== ANALYSIS ======================
-    elif page == "Analysis":
-        st.header("📈 Business Analysis")
-       
-        conn = get_connection()
-        df = pd.read_sql_query("SELECT * FROM transactions", conn)
-        conn.close()
-       
-        if df.empty:
-            st.info("No data yet.")
-        else:
-            customer_stats = df[df['customer'].notna() & (df['customer'] != '')].groupby('customer').agg(
-                transactions=('id', 'count'),
-                total_spent=('amount', 'sum')
-            ).reset_index()
-           
-            new_customers = len(customer_stats[customer_stats['transactions'] == 1])
-            repeat_customers = len(customer_stats[customer_stats['transactions'] > 1])
-           
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Total Unique Customers", len(customer_stats))
-            col2.metric("New Customers", new_customers)
-            col3.metric("Repeat Customers", repeat_customers)
-
-            # Monthly Graph
-            df['date'] = pd.to_datetime(df['date'])
-            df['month'] = df['date'].dt.to_period('M').astype(str)
-           
-            monthly = df.groupby(['month', 'type']).agg({
-                'amount': 'sum',
-                'cost': 'sum',
-                'shipping': 'sum'
-            }).reset_index()
-           
-            revenue = monthly[monthly['type'] == 'Income'].set_index('month')['amount']
-            cogs = monthly[monthly['type'] == 'Income'].set_index('month')['cost'].fillna(0)
-            shipping = monthly[monthly['type'] == 'Income'].set_index('month')['shipping'].fillna(0)
-            op_exp = monthly[monthly['type'] == 'Expense'].groupby('month')['amount'].sum()
-           
-            monthly_summary = pd.DataFrame({
-                'Total Revenue': revenue,
-                'Gross Profit': revenue - cogs,
-                'Net Profit': revenue - cogs - shipping.fillna(0) - op_exp.fillna(0)
-            }).fillna(0).reset_index()
-           
-            plot_df = monthly_summary.melt(id_vars=['month'], var_name='Metric', value_name='Amount')
-           
-            fig = px.bar(plot_df, x='month', y='Amount', color='Metric',
-                        title="Monthly Revenue, Gross Profit & Net Profit",
-                        barmode='group',
-                        color_discrete_map={
-                            'Total Revenue': '#1f77b4',
-                            'Gross Profit': '#2ca02c',
-                            'Net Profit': '#ff7f0e'
-                        })
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Cost Breakdown
-            st.subheader("Cost Breakdown")
-            total_cogs = df[df['type'] == 'Income']['cost'].fillna(0).sum()
-            total_shipping = df[df['type'] == 'Income']['shipping'].fillna(0).sum()
-            total_other_operating = df[df['type'] == 'Expense']['amount'].sum()
-
-            cost_data = {
-                'Category': ['Cost of Goods Sold', 'Shipping Costs', 'Other Operating Expenses'],
-                'Amount': [total_cogs, total_shipping, total_other_operating]
-            }
-            cost_df = pd.DataFrame(cost_data)
-           
-            fig_cost = px.bar(cost_df, x='Category', y='Amount',
-                             title="Total Costs Breakdown",
-                             color='Category',
-                             color_discrete_sequence=['#d62728', '#ff7f0e', '#9467bd'])
-            st.plotly_chart(fig_cost, use_container_width=True)
-
-    # ====================== FULL VIEW & EDIT ======================
-    else:
+        # ====================== VIEW & EDIT TRANSACTIONS ======================
+    elif page == "View & Edit Transactions":
         st.header("View & Edit Transactions")
 
-        # === EDIT FORM ===
-        if 'edit_id' in st.session_state:
+        # ====================== EDIT FORM ======================
+        if 'edit_id' in st.session_state and 'edit_data' in st.session_state:
             st.subheader("✏️ Edit Transaction")
             data = st.session_state.edit_data
 
             col1, col2 = st.columns(2)
             with col1:
-                new_date = st.date_input("Date", pd.to_datetime(data['date']).date())
-                new_type = st.selectbox("Type", ["Income", "Expense"], index=0 if data.get('type') == "Income" else 1)
+                new_date = st.date_input("Date", pd.to_datetime(data['date']).date(), key="edit_date")
+                new_type = st.selectbox("Type", ["Income", "Expense"], 
+                                      index=0 if data.get('type') == "Income" else 1, key="edit_type")
             with col2:
                 if new_type == "Income":
-                    new_category = st.selectbox("Product", products, index=products.index(data.get('category', products[0])))
+                    new_category = st.selectbox("Product", products, 
+                                              index=products.index(data.get('category', products[0])), key="edit_category")
                 else:
                     exp_cat = ["Filament", "Resin", "Parts & Nozzles", "Electricity", "Shipping", "Equipment", "Marketing", "Other"]
-                    new_category = st.selectbox("Expense Category", exp_cat)
+                    new_category = st.selectbox("Expense Category", exp_cat, key="edit_exp_cat")
 
-            new_amount = st.number_input("Amount ($)", value=float(data.get('amount') or 0))
-            new_cost = st.number_input("Cost to Make ($)", value=float(data.get('cost') or 0))
-            new_shipping = st.number_input("Shipping Cost ($)", value=float(data.get('shipping') or 0))
-            new_customer = st.text_input("Customer", value=data.get('customer') or "") if new_type == "Income" else ""
-            new_description = st.text_input("Description", value=data.get('description') or "")
-            new_notes = st.text_area("Notes", value=data.get('notes') or "")
+            # Amount, Cost, Shipping formatted as currency
+            new_amount = st.number_input("Selling Price ($)", 
+                                       value=float(data.get('amount') or 0), 
+                                       min_value=0.0, step=0.01, format="%.2f", key="edit_amount")
+            
+            new_cost = st.number_input("Cost to Make ($)", 
+                                     value=float(data.get('cost') or 0), 
+                                     min_value=0.0, step=0.01, format="%.2f", key="edit_cost")
+            
+            new_shipping = st.number_input("Shipping Cost ($)", 
+                                         value=float(data.get('shipping') or 0), 
+                                         min_value=0.0, step=0.01, format="%.2f", key="edit_shipping")
+            
+            new_customer = ""
+            if new_type == "Income":
+                new_customer = st.text_input("Customer Name", value=str(data.get('customer') or ""), key="edit_customer")
 
-            col_save, col_cancel = st.columns(2)
+            new_description = st.text_input("Description", value=str(data.get('description') or ""), key="edit_desc")
+            new_notes = st.text_area("Notes", value=str(data.get('notes') or ""), key="edit_notes")
+
+            col_save, col_cancel, col_delete = st.columns(3)
             with col_save:
                 if st.button("💾 Save Changes", type="primary"):
                     conn = get_connection()
-                    conn.execute("""UPDATE transactions SET date=?, type=?, category=?, description=?, 
-                                 amount=?, cost=?, shipping=?, customer=?, notes=? WHERE id=?""",
+                    cur = conn.cursor()
+                    cur.execute("""UPDATE transactions 
+                                SET date=?, type=?, category=?, description=?, 
+                                    amount=?, cost=?, shipping=?, customer=?, notes=?
+                                WHERE id=?""",
                         (new_date.isoformat(), new_type, new_category, new_description,
                          new_amount, new_cost, new_shipping, new_customer, new_notes, st.session_state.edit_id))
                     conn.commit()
                     conn.close()
-                    st.success("✅ Changes Saved!")
+                    st.success("✅ Transaction Updated Successfully!")
                     del st.session_state.edit_id
                     del st.session_state.edit_data
                     st.rerun()
+
             with col_cancel:
                 if st.button("Cancel"):
                     del st.session_state.edit_id
                     del st.session_state.edit_data
                     st.rerun()
 
-        # === LIST OF TRANSACTIONS ===
+            with col_delete:
+                if st.button("🗑️ Delete", type="secondary"):
+                    if st.checkbox("Confirm Delete?", key="confirm_delete"):
+                        conn = get_connection()
+                        conn.execute("DELETE FROM transactions WHERE id=?", (st.session_state.edit_id,))
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Transaction Deleted!")
+                        del st.session_state.edit_id
+                        del st.session_state.edit_data
+                        st.rerun()
+
+        # ====================== LIST OF ALL TRANSACTIONS ======================
         st.subheader("All Transactions")
         conn = get_connection()
         df = pd.read_sql_query("SELECT * FROM transactions ORDER BY date DESC, id DESC", conn)
@@ -399,12 +368,20 @@ else:
         else:
             for _, row in df.iterrows():
                 emoji = "🟢" if row['type'] == "Income" else "🔴"
-                with st.expander(f"{emoji} {row['date']} — ${row['amount']:.2f} — {row['category']}"):
+                amount_val = float(row.get('amount') or 0)
+                
+                with st.expander(f"{emoji} {row['date']} — ${amount_val:.2f} — {row['category']}"):
                     if row.get('customer'):
                         st.write(f"**Customer:** {row['customer']}")
                     st.write(f"**Description:** {row.get('description') or '—'}")
-                    st.write(f"**Cost:** ${row.get('cost') or 0:.2f} | **Shipping:** ${row.get('shipping') or 0:.2f}")
-                    st.write(f"**Profit:** ${(row['amount'] - (row.get('cost') or 0) - (row.get('shipping') or 0)) if row['type']=='Income' else -row['amount']:.2f}")
+                    
+                    # Show as currency
+                    st.write(f"**Selling Price:** ${float(row.get('amount') or 0):.2f}")
+                    st.write(f"**Cost to Make:** ${float(row.get('cost') or 0):.2f}")
+                    st.write(f"**Shipping:** ${float(row.get('shipping') or 0):.2f}")
+                    
+                    profit = amount_val - float(row.get('cost') or 0) - float(row.get('shipping') or 0) if row['type'] == "Income" else -amount_val
+                    st.write(f"**Profit:** ${profit:.2f}")
                     
                     if row.get('details'):
                         try:
@@ -413,10 +390,110 @@ else:
                             pass
                     if row.get('notes'):
                         st.write("**Notes:**", row['notes'])
-
-                    if st.button("✏️ Edit This Transaction", key=f"edit_{row['id']}"):
+                    
+                    if st.button("✏️ Edit This Transaction", key=f"edit_btn_{row['id']}"):
                         st.session_state.edit_id = row['id']
-                        st.session_state.edit_data = row.to_dict()
+                        st.session_state.edit_data = dict(row)
                         st.rerun()
+        # ====================== ANALYSIS ======================
+    elif page == "Analysis":
+        st.header("📈 Business Analysis")
+        conn = get_connection()
+        df = pd.read_sql_query("SELECT * FROM transactions", conn)
+        conn.close()
 
-    st.caption(f"💾 Private database: data_{username}.db")
+        if df.empty:
+            st.info("No data yet.")
+        else:
+            # Convert numeric columns
+            for col in ['amount', 'cost', 'shipping']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+            # ==================== CUSTOMER ANALYSIS ====================
+            st.subheader("Customer Analysis")
+            customer_stats = df[df['customer'].notna() & (df['customer'] != '')].groupby('customer').agg(
+                transactions=('id', 'count'),
+                total_spent=('amount', 'sum')
+            ).reset_index()
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Unique Customers", len(customer_stats))
+            col2.metric("New Customers", len(customer_stats[customer_stats['transactions'] == 1]))
+            col3.metric("Repeat Customers", len(customer_stats[customer_stats['transactions'] > 1]))
+
+            # ==================== MONTHLY PERFORMANCE ====================
+            st.subheader("Monthly Performance")
+            df['date'] = pd.to_datetime(df['date'])
+            df['month'] = df['date'].dt.to_period('M').astype(str)
+            
+            monthly = df.groupby(['month', 'type']).agg({
+                'amount': 'sum',
+                'cost': 'sum',
+                'shipping': 'sum'
+            }).reset_index()
+            
+            revenue = monthly[monthly['type'] == 'Income'].set_index('month')['amount']
+            cogs = monthly[monthly['type'] == 'Income'].set_index('month')['cost'].fillna(0)
+            shipping = monthly[monthly['type'] == 'Income'].set_index('month')['shipping'].fillna(0)
+            op_exp = monthly[monthly['type'] == 'Expense'].groupby('month')['amount'].sum()
+            
+            monthly_summary = pd.DataFrame({
+                'Total Revenue': revenue,
+                'Gross Profit': revenue - cogs,
+                'Net Profit': revenue - cogs - shipping.fillna(0) - op_exp.fillna(0)
+            }).fillna(0).reset_index()
+            
+            plot_df = monthly_summary.melt(id_vars=['month'], var_name='Metric', value_name='Amount')
+            
+            fig = px.bar(plot_df, x='month', y='Amount', color='Metric',
+                        title="Monthly Revenue, Gross Profit & Net Profit",
+                        barmode='group',
+                        color_discrete_map={
+                            'Total Revenue': '#1f77b4',
+                            'Gross Profit': '#2ca02c',
+                            'Net Profit': '#ff7f0e'
+                        })
+            st.plotly_chart(fig, use_container_width=True)
+
+            # ==================== BEST SELLING ITEMS ====================
+            st.subheader("🏆 Best Selling Items")
+            
+            sales_df = df[df['type'] == 'Income'].copy()
+            
+            if not sales_df.empty:
+                top_items = sales_df.groupby('category').agg(
+                    total_revenue=('amount', 'sum')
+                ).round(2).sort_values('total_revenue', ascending=False).reset_index()
+                
+                # Top Items by Revenue
+                fig_best = px.bar(top_items.head(10), 
+                                 x='category', 
+                                 y='total_revenue',
+                                 text='total_revenue',
+                                 title="Top Products by Revenue",
+                                 color='total_revenue',
+                                 color_continuous_scale='Viridis')
+                fig_best.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
+                st.plotly_chart(fig_best, use_container_width=True)
+
+                # Simple table
+                st.dataframe(top_items, use_container_width=True, hide_index=True)
+            else:
+                st.info("No sales data yet.")
+
+            # ==================== COST BREAKDOWN ====================
+            st.subheader("Cost Breakdown")
+            total_cogs = df[df['type']=='Income']['cost'].sum()
+            total_ship = df[df['type']=='Income']['shipping'].sum()
+            total_op = df[df['type']=='Expense']['amount'].sum()
+
+            cost_df = pd.DataFrame({
+                'Category': ['Cost of Goods Sold', 'Shipping Costs', 'Other Operating Expenses'],
+                'Amount': [total_cogs, total_ship, total_op]
+            })
+            fig_cost = px.bar(cost_df, x='Category', y='Amount',
+                             title="Total Costs Breakdown",
+                             color='Category',
+                             color_discrete_sequence=['#d62728', '#ff7f0e', '#9467bd'])
+            st.plotly_chart(fig_cost, use_container_width=True)
