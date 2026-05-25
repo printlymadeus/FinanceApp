@@ -10,7 +10,7 @@ import plotly.express as px
 st.set_page_config(page_title="3D Print Tracker", layout="wide")
 
 # ====================== DATABASE FOLDER ======================
-DB_FOLDER = r"C:\Users\aaarr\OneDrive\Desktop\web app\databases"
+DB_FOLDER = "databases"
 os.makedirs(DB_FOLDER, exist_ok=True)
 
 def get_db_path(username):
